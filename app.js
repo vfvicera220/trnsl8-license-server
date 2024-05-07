@@ -4,6 +4,7 @@ const sqlite3 = require('sqlite3').verbose();
 const moment = require('moment');
 
 const API_KEY = "4y2b9tdg!2024";
+const API_KEY_VERIFY = "2024_verify_trnsl8";
 
 const app = express();
 const PORT = 3000; // Change to desired port number
@@ -70,7 +71,7 @@ app.use(bodyParser.json());
 
 app.post('/verify_license', async (req, res) => {
     const apiKey = req.headers['api_key'];
-    if (apiKey !== API_KEY) {
+    if (apiKey !== API_KEY_VERIFY) {
         return res.status(401).json({ error: "Unauthorized" });
     }
 
