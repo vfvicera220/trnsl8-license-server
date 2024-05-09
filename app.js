@@ -2,12 +2,23 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const sqlite3 = require('sqlite3').verbose();
 const moment = require('moment');
+const winston = require('winston');
 
 const API_KEY = "4y2b9tdg!2024";
 const API_KEY_VERIFY = "2024_verify_trnsl8";
 
 const app = express();
 const PORT = 3000; // Change to desired port number
+
+// Configure Winston logger
+const logger = winston.createLogger({
+    level: 'info',
+    format: winston.format.json(),
+    transports: [
+        new winston.transports.File({ filename: 'error.log', level: 'error' }),
+        new winston.transports.File({ filename: 'combined.log' }),
+    ],
+});
 
 const db = new sqlite3.Database('licenses.db');
 
@@ -72,6 +83,7 @@ app.use(bodyParser.json());
 app.post('/verify_license', async (req, res) => {
     const apiKey = req.headers['api_key'];
     if (apiKey !== API_KEY_VERIFY) {
+        logger.warn(`Unauthorized access to /verify_license endpoint with API key: ${apiKey}`);
         return res.status(401).json({ error: "Unauthorized" });
     }
 
@@ -90,7 +102,7 @@ app.post('/verify_license', async (req, res) => {
                 res.json({ status: "invalid" });
             }
         } catch (err) {
-            console.error('Error verifying license:', err);
+            logger.error('Error verifying license:', err);
             res.status(500).json({ error: "Internal server error" });
         }
     } else {
@@ -101,6 +113,7 @@ app.post('/verify_license', async (req, res) => {
 app.post('/update_license', (req, res) => {
     const apiKey = req.headers['api_key'];
     if (apiKey !== API_KEY) {
+        logger.warn(`Unauthorized access to /update_license endpoint with API key: ${apiKey}`);
         return res.status(401).json({ error: "Unauthorized" });
     }
     
@@ -109,7 +122,7 @@ app.post('/update_license', (req, res) => {
         const sql = `UPDATE licenses SET ${column} = ? WHERE license_key = ?`;
         db.run(sql, [value, license_key], function(err) {
             if (err) {
-                console.error(`Error updating ${column} for license key ${license_key}:`, err);
+                logger.error(`Error updating ${column} for license key ${license_key}:`, err);
                 res.status(500).json({ error: "Internal server error" });
             } else {
                 if (this.changes > 0) {
@@ -127,6 +140,7 @@ app.post('/update_license', (req, res) => {
 app.post('/add_license', (req, res) => {
     const apiKey = req.headers['api_key'];
     if (apiKey !== API_KEY) {
+        logger.warn(`Unauthorized access to /add_license endpoint with API key: ${apiKey}`);
         return res.status(401).json({ error: "Unauthorized" });
     }
     
@@ -136,7 +150,7 @@ app.post('/add_license', (req, res) => {
                      VALUES (?, ?, ?, ?, ?, ?)`;
         db.run(sql, [license_key, user_name, valid_until, is_used, license_type, machine_identifier], function(err) {
             if (err) {
-                console.error('Error adding license:', err);
+                logger.error('Error adding license:', err);
                 res.status(500).json({ error: "Internal server error" });
             } else {
                 res.json({ status: "success", message: "License added successfully" });
@@ -150,6 +164,7 @@ app.post('/add_license', (req, res) => {
 app.post('/delete_license', (req, res) => {
     const apiKey = req.headers['api_key'];
     if (apiKey !== API_KEY) {
+        logger.warn(`Unauthorized access to /delete_license endpoint with API key: ${apiKey}`);
         return res.status(401).json({ error: "Unauthorized" });
     }
     
@@ -158,7 +173,7 @@ app.post('/delete_license', (req, res) => {
         const sql = `UPDATE licenses SET is_deleted = 1 WHERE license_key = ?`;
         db.run(sql, [license_key], function(err) {
             if (err) {
-                console.error('Error deleting license:', err);
+                logger.error('Error deleting license:', err);
                 res.status(500).json({ error: "Internal server error" });
             } else {
                 if (this.changes > 0) {
@@ -171,6 +186,24 @@ app.post('/delete_license', (req, res) => {
     } else {
         res.status(400).json({ error: "License key not provided" });
     }
+});
+
+app.get('/list_licenses', (req, res) => {
+    const apiKey = req.headers['api_key'];
+    if (apiKey !== API_KEY) {
+        logger.warn(`Unauthorized access to /list_licenses endpoint with API key: ${apiKey}`);
+        return res.status(401).json({ error: "Unauthorized" });
+    }
+    
+    const sql = `SELECT * FROM licenses WHERE is_deleted = 0`;
+    db.all(sql, [], (err, rows) => {
+        if (err) {
+            logger.error('Error listing licenses:', err);
+            res.status(500).json({ error: "Internal server error" });
+        } else {
+            res.json({ licenses: rows });
+        }
+    });
 });
 
 initializeDatabase();
