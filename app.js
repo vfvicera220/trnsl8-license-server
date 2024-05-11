@@ -26,7 +26,8 @@ function initializeDatabase() {
     db.run(`CREATE TABLE IF NOT EXISTS licenses (
         license_key TEXT PRIMARY KEY,
         user_name TEXT,
-        valid_until TEXT,
+        activation_date TEXT,
+        duration_months INTEGER,
         is_used INTEGER,
         license_type TEXT,
         machine_identifier TEXT,
@@ -45,8 +46,31 @@ function verifyLicenseAndUpdate(key, machineIdentifier) {
 
                 if (row) {
                     const currentDate = moment();
-                    const validUntilDate = moment(row.valid_until);
-                    if (currentDate.isBefore(validUntilDate) && (row.is_used === 0 || row.machine_identifier === machineIdentifier)) {
+                    const activationDate = moment(row.activation_date);
+                    const expirationDate = activationDate.clone().add(row.duration_months, 'months');
+                    if (!activationDate.isValid() && row.is_used === 0) {
+                        // fresh license should enter this code block
+                        db.run("BEGIN TRANSACTION");
+                        db.run("UPDATE licenses SET activation_date = ?, is_used = 1, machine_identifier = ? WHERE license_key = ?", [currentDate.format('YYYY-MM-DD'), machineIdentifier, key], (err) => {
+                            if (err) {
+                                db.run("ROLLBACK");
+                                reject(err);
+                                return;
+                            }
+                            db.run("COMMIT", (err) => {
+                                if (err) {
+                                    reject(err);
+                                    return;
+                                }
+                                resolve({
+                                    name: row.user_name,
+                                    valid_until: expirationDate.format('YYYY-MM-DD'),
+                                    license_type: row.license_type,
+                                    machine_identifier: machineIdentifier
+                                });
+                            });
+                        });
+                    } else if (currentDate.isBetween(activationDate, expirationDate, null, '[]') && (row.is_used === 0 || row.machine_identifier === machineIdentifier)) {
                         db.run("BEGIN TRANSACTION");
                         db.run("UPDATE licenses SET is_used = 1, machine_identifier = ? WHERE license_key = ?", [machineIdentifier, key], (err) => {
                             if (err) {
@@ -61,7 +85,7 @@ function verifyLicenseAndUpdate(key, machineIdentifier) {
                                 }
                                 resolve({
                                     name: row.user_name,
-                                    valid_until: row.valid_until,
+                                    valid_until: expirationDate.format('YYYY-MM-DD'),
                                     license_type: row.license_type,
                                     machine_identifier: machineIdentifier
                                 });
@@ -144,11 +168,11 @@ app.post('/add_license', (req, res) => {
         return res.status(401).json({ error: "Unauthorized" });
     }
     
-    const { license_key, user_name, valid_until, is_used, license_type, machine_identifier } = req.body;
-    if (license_key && user_name && valid_until && typeof is_used === 'number' && license_type && machine_identifier) {
-        const sql = `INSERT INTO licenses (license_key, user_name, valid_until, is_used, license_type, machine_identifier) 
-                     VALUES (?, ?, ?, ?, ?, ?)`;
-        db.run(sql, [license_key, user_name, valid_until, is_used, license_type, machine_identifier], function(err) {
+    const { license_key, user_name, duration_months, is_used, license_type } = req.body;
+    if (license_key && user_name && duration_months && typeof is_used === 'number' && license_type) {
+        const sql = `INSERT INTO licenses (license_key, user_name, duration_months, is_used, license_type) 
+                     VALUES (?, ?, ?, ?, ?)`;
+        db.run(sql, [license_key, user_name, duration_months, is_used, license_type], function(err) {
             if (err) {
                 logger.error('Error adding license:', err);
                 res.status(500).json({ error: "Internal server error" });
