@@ -47,9 +47,10 @@ function verifyLicenseAndUpdate(key, machineIdentifier) {
                 if (row) {
                     const currentDate = moment();
                     const activationDate = moment(row.activation_date);
-                    const expirationDate = activationDate.clone().add(row.duration_months, 'months');
+                    let expirationDate = activationDate.clone().add(row.duration_months, 'months');
                     if (!activationDate.isValid() && row.is_used === 0) {
                         // fresh license should enter this code block
+                        expirationDate = currentDate.clone().add(row.duration_months, 'months');
                         db.run("BEGIN TRANSACTION");
                         db.run("UPDATE licenses SET activation_date = ?, is_used = 1, machine_identifier = ? WHERE license_key = ?", [currentDate.format('YYYY-MM-DD'), machineIdentifier, key], (err) => {
                             if (err) {
